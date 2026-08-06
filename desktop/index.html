@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Doorman for macOS — your Mac, quietly governed</title>
+<meta name="description" content="Doorman lives in your menu bar, detects every AI tool on this Mac, and routes each request to the cheapest capable model — with a receipt for every route." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23193d2b'/%3E%3Ctext x='16' y='22' font-family='-apple-system,sans-serif' font-size='16' font-weight='700' fill='%23d9f7e3' text-anchor='middle'%3E.D%3C/text%3E%3C/svg%3E" />
+<style>
+  /* Doorman macOS design language — tokens lifted from the app itself
+     (doorman-desktop PR #1317, design/doorman-macos-concept/styles.css). */
+  :root {
+    --canvas: #e9ece7;
+    --surface: #f8f8f4;
+    --raised: #ffffff;
+    --ink: #18201b;
+    --muted: #68736c;
+    --soft: #909a93;
+    --line: rgba(24, 32, 27, 0.1);
+    --line-strong: rgba(24, 32, 27, 0.16);
+    --forest: #193d2b;
+    --forest-2: #24563c;
+    --protected: #1e8a55;
+    --protected-soft: #e8f5ed;
+    --attention: #b66a10;
+    --attention-soft: #fff3de;
+    --danger: #c43c35;
+    --shadow: 0 28px 80px rgba(27, 42, 32, 0.2), 0 3px 12px rgba(27, 42, 32, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background:
+      radial-gradient(circle at 16% 6%, rgba(255,255,255,.92), rgba(255,255,255,0) 30%),
+      radial-gradient(circle at 90% 30%, rgba(182, 208, 190, .38), rgba(182, 208, 190, 0) 34%),
+      linear-gradient(155deg, #edf0eb 0%, var(--canvas) 60%, #e1e6df 100%);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-size: 15px; line-height: 1.6;
+    overflow-x: hidden;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
+
+  /* ------------------------------- nav -------------------------------- */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50; height: 64px;
+    background: rgba(248, 248, 244, 0.82);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+  }
+  .nav-in { height: 64px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+  .mark {
+    width: 34px; height: 34px; border-radius: 10px; background: var(--forest);
+    color: #d9f7e3; display: grid; place-items: center;
+    font-size: 15px; font-weight: 700; letter-spacing: -0.02em;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.1), 0 4px 10px rgba(25,61,43,.2);
+  }
+  .brand b { font-size: 14.5px; letter-spacing: -0.01em; }
+  .nav-links { display: flex; align-items: center; gap: 24px; }
+  .nav-links a { font-size: 13px; color: var(--muted); text-decoration: none; font-weight: 500; }
+  .nav-links a:hover { color: var(--ink); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--forest); color: #eaf7ef; border: 0; cursor: pointer; text-decoration: none;
+    font-size: 13px; font-weight: 600; border-radius: 10px; padding: 9px 16px;
+    box-shadow: 0 4px 12px rgba(25, 61, 43, 0.25);
+    transition: background 140ms ease;
+  }
+  .pill:hover { background: var(--forest-2); }
+  .quiet {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--raised); color: var(--ink); border: 1px solid var(--line-strong);
+    cursor: pointer; text-decoration: none;
+    font-size: 13px; font-weight: 600; border-radius: 10px; padding: 9px 16px;
+  }
+  .quiet:hover { border-color: rgba(24, 32, 27, 0.3); }
+  .pill.lg, .quiet.lg { padding: 12px 22px; font-size: 15px; border-radius: 12px; }
+  @media (max-width: 640px) { .nav-links a { display: none; } }
+
+  /* ------------------------------- hero ------------------------------- */
+  .hero { padding: 190px 0 8px; }
+  .hero h1 {
+    font-size: clamp(42px, 5.4vw, 66px);
+    font-weight: 700; letter-spacing: -0.028em; line-height: 1.03;
+    margin: 0 0 26px; max-width: 15ch;
+  }
+  .hero h1 em { font-style: normal; color: var(--forest-2); }
+  .hero-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .hero-sub { font-size: 17px; color: var(--muted); max-width: 52ch; margin: 0; }
+  .hero-ctas { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 30px; }
+  .fine { font-size: 12.5px; color: var(--soft); }
+  .fine code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; }
+
+  /* --------------------------- product window -------------------------- */
+  .window-wrap { margin: 56px auto 0; }
+  .window {
+    border-radius: 14px; overflow: hidden; background: var(--surface);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow);
+  }
+  .titlebar {
+    height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 14px;
+    background: rgba(248, 248, 244, 0.9); border-bottom: 1px solid var(--line);
+  }
+  .titlebar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .titlebar i:nth-child(1) { background: #f26b5e; }
+  .titlebar i:nth-child(2) { background: #f5bf4f; }
+  .titlebar i:nth-child(3) { background: #58c455; }
+  .titlebar span { margin-left: 8px; font-size: 12px; color: var(--soft); }
+  .window img { display: block; width: 100%; height: auto; }
+
+  /* --------------------------- status strip ---------------------------- */
+  .statuses { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; padding: 26px 0 0; }
+  .status {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 13px;
+    background: var(--raised); border: 1px solid var(--line);
+  }
+  .status i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status.ok i { background: var(--protected); }
+  .status.warn i { background: var(--attention); }
+  .status.paused i { background: #6e7780; }
+  .status.managed i { background: var(--forest-2); }
+  .statuses .fine { width: 100%; text-align: center; margin-top: 8px; }
+
+  /* ------------------------------ sections ----------------------------- */
+  .section { padding: 110px 0 0; }
+  .section h2 {
+    font-size: clamp(28px, 3.2vw, 40px); font-weight: 700; letter-spacing: -0.025em;
+    line-height: 1.1; margin: 0 0 12px; max-width: 26ch;
+  }
+  .lede { font-size: 16px; color: var(--muted); max-width: 60ch; margin: 0 0 34px; }
+  .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 44px; align-items: center; }
+  .split.flip { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+  .split.flip .copy { order: 2; }
+  .split.flip .media { order: 1; }
+  @media (max-width: 860px) {
+    .split, .split.flip { grid-template-columns: 1fr; gap: 22px; }
+    .split.flip .copy { order: 1; } .split.flip .media { order: 2; }
+  }
+  .split h3 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 10px; }
+  .split p { color: var(--muted); margin: 0 0 14px; max-width: 46ch; }
+  .media { border-radius: 14px; overflow: hidden; border: 1px solid var(--line-strong); box-shadow: var(--shadow); background: var(--surface); }
+  .media img { display: block; width: 100%; height: auto; }
+  .bullets { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 14px; color: var(--muted); }
+  .bullets li { display: flex; gap: 9px; align-items: baseline; }
+  .bullets li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--protected); flex: 0 0 6px; transform: translateY(-2px); }
+
+  /* ------------------------------ receipts ----------------------------- */
+  .receipts { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+  .receipt {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--raised); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 16px; box-shadow: 0 3px 12px rgba(27, 42, 32, 0.06);
+    font-size: 13.5px;
+  }
+  .receipt .app-ico {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--surface);
+    border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px;
+  }
+  .receipt b { font-weight: 650; }
+  .receipt .route { color: var(--muted); font-size: 12.5px; }
+  .receipt .route s { color: var(--soft); }
+  .receipt .delta { margin-left: auto; font-weight: 700; color: var(--protected); font-variant-numeric: tabular-nums; }
+  .receipt .delta.quality { color: var(--forest-2); }
+
+  /* --------------------------- protected band -------------------------- */
+  .band {
+    margin-top: 110px; border-radius: 18px; overflow: hidden;
+    background: linear-gradient(140deg, var(--forest) 0%, #143122 70%);
+    color: #dcefe3; box-shadow: var(--shadow);
+    padding: 44px 46px;
+  }
+  .band h2 { color: #f2faf5; margin: 0 0 10px; font-size: clamp(26px, 3vw, 36px); letter-spacing: -0.025em; }
+  .band p { color: #b9d5c4; max-width: 62ch; margin: 0 0 8px; }
+  .band .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 28px; margin-top: 22px; }
+  @media (max-width: 800px) { .band .grid { grid-template-columns: 1fr; } }
+  .band .grid div { font-size: 13.5px; color: #cfe6d8; display: flex; gap: 9px; align-items: baseline; }
+  .band .grid div::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #4fd18f; flex: 0 0 6px; transform: translateY(-2px); }
+
+  /* ------------------------------ download ----------------------------- */
+  .download { padding: 120px 0 90px; text-align: center; }
+  .download h2 { font-size: clamp(30px, 3.6vw, 44px); font-weight: 700; letter-spacing: -0.026em; margin: 0 0 12px; }
+  .download .lede { margin: 0 auto 28px; }
+  .dl-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .dl-meta { margin-top: 18px; }
+  .footer {
+    border-top: 1px solid var(--line);
+    padding: 24px 0 40px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  }
+  .footer .fine a { color: var(--muted); text-decoration: none; margin-left: 18px; }
+  .footer .fine a:hover { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#"><span class="mark">.D</span><b>doorman</b></a>
+    <div class="nav-links">
+      <a href="#routing">Routing</a>
+      <a href="#connection">Connection</a>
+      <a href="#trust">Trust</a>
+      <a href="https://tiago520.github.io/switchyard-showcase/" target="_blank" rel="noreferrer">Web console</a>
+      <a class="pill" href="#download">Download for macOS</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap hero">
+  <h1>Your Mac, <em>quietly governed.</em></h1>
+  <div class="hero-row">
+    <p class="hero-sub">
+      Doorman lives in your menu bar. It detects every AI tool on this Mac — Claude Code, Cursor,
+      Codex, Gemini — and routes each request to the cheapest capable model, with a receipt for
+      every route.
+    </p>
+  </div>
+  <div class="hero-ctas">
+    <a class="pill lg" href="#download">Download for macOS</a>
+    <a class="quiet lg" href="#routing">See how routing works</a>
+  </div>
+  <div class="fine" style="margin-top: 14px;">
+    v0.4.1-preview · Apple Silicon · internal preview, unsigned — checksum below
+  </div>
+</header>
+
+<section class="wrap window-wrap">
+  <div class="window">
+    <div class="titlebar"><i></i><i></i><i></i><span>Doorman — Control Center</span></div>
+    <img src="previews/control-center.png" alt="The Doorman Control Center: Protected state, savings today, recent routing decisions with receipts, app coverage" loading="eager" />
+  </div>
+  <div class="statuses">
+    <span class="status ok"><i></i>Protected</span>
+    <span class="status warn"><i></i>Attention</span>
+    <span class="status paused"><i></i>Paused</span>
+    <span class="status managed"><i></i>Managed by your org</span>
+    <span class="fine">One authoritative state drives the tray, the Control Center, and the native menu-bar icon — ⌘⇧D from anywhere.</span>
+  </div>
+</section>
+
+<section class="wrap section" id="routing">
+  <h2>Every tool, covered. Every route, receipted.</h2>
+  <p class="lede">
+    No SDKs and no config edits — Doorman discovers the AI tools on this Mac and covers them at
+    the system level. Each routed request produces a receipt: what asked, where it ran, what it
+    saved.
+  </p>
+  <div class="split">
+    <div class="copy">
+      <h3>A receipt for every route</h3>
+      <p>Strikethrough honesty: the model your tool asked for, the model that did the job, and the
+        difference in dollars. Quality-protected requests say so instead of pretending.</p>
+      <div class="receipts">
+        <div class="receipt"><span class="app-ico">C</span><span><b>Claude Code</b><br /><span class="route"><s>Claude Sonnet 4.5</s> → Gemini 3 Flash</span></span><span class="delta">−$0.14</span></div>
+        <div class="receipt"><span class="app-ico">⌘</span><span><b>Codex CLI</b><br /><span class="route"><s>GPT-5.2</s> → GPT-5.2 mini</span></span><span class="delta">−$0.09</span></div>
+        <div class="receipt"><span class="app-ico">▲</span><span><b>Cursor</b><br /><span class="route">Claude Sonnet 4.5 — kept</span></span><span class="delta quality">Quality</span></div>
+      </div>
+    </div>
+    <div class="media"><img src="previews/apps-routing.png" alt="Apps & routing: every detected tool with route or passthrough controls" loading="lazy" /></div>
+  </div>
+</section>
+
+<section class="wrap section" id="connection">
+  <div class="split flip">
+    <div class="copy">
+      <h3>A supervisor you can trust</h3>
+      <p>Proxy, certificate, gateway, and HTTP/3 protection are checked continuously. When something
+        needs repair, Doorman asks properly — the native macOS administrator dialog, verified
+        results, and actionable failures. Never silent changes.</p>
+      <ul class="bullets">
+        <li>Certificate trust staged safely, then independently verified</li>
+        <li>Reconnect, checks, and repair — one click each</li>
+        <li>A privacy-safe support report when you want help</li>
+      </ul>
+    </div>
+    <div class="media"><img src="previews/connection-healthy.png" alt="Connection health: proxy, certificate, gateway and HTTP/3 checks all green" loading="lazy" /></div>
+  </div>
+</section>
+
+<section class="wrap section" id="setup">
+  <div class="split">
+    <div class="copy">
+      <h3>Consent-first setup</h3>
+      <p>Privacy first, then discovery, then explicit consent for each step — with streamed
+        progress, failure rollback, and a ready-proof at the end. Uninstall is reversible and
+        complete.</p>
+      <ul class="bullets">
+        <li>Invite links for teams; VPN and proxy conflict modes handled</li>
+        <li>Every change consent-gated; restarts ask first</li>
+        <li>Launch at login, appearance, pause durations — your call</li>
+      </ul>
+    </div>
+    <div class="media"><img src="previews/setup-ready.png" alt="Setup complete: ready proof before handing off to the Control Center" loading="lazy" /></div>
+  </div>
+</section>
+
+<section class="wrap" id="trust">
+  <div class="band">
+    <h2>Thin on purpose. Honest by design.</h2>
+    <p>The gateway owns models, policy, routing decisions, and measured outcomes. The desktop app
+      presents one sanitized state and asks before it acts — it never holds session tokens in the
+      UI, never infers health, never invents numbers.</p>
+    <div class="grid">
+      <div>Gateway-verified savings — never estimated twice</div>
+      <div>Receipts sanitized before they reach the UI</div>
+      <div>Organization-managed mode with visible policy</div>
+      <div>Consent-gated restarts and repairs</div>
+      <div>Reversible, complete uninstall</div>
+      <div>New models and policies need no app update</div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap download" id="download">
+  <h2>Put your menu bar to work.</h2>
+  <p class="lede">Download the preview, drag it to Applications, and watch the first receipt land.</p>
+  <div class="dl-row">
+    <a class="pill lg" href="https://github.com/DoormanAI/doorman-desktop/releases/download/v0.4.1-preview.3/doorman-0.4.1-preview.3-arm64.dmg">Download doorman-0.4.1-preview.3 (arm64)</a>
+    <a class="quiet lg" href="https://tiago520.github.io/switchyard-showcase/" target="_blank" rel="noreferrer">Explore the web console</a>
+  </div>
+  <div class="fine dl-meta">
+    Apple Silicon · internal preview, unsigned — after the first blocked launch use
+    System Settings → Privacy &amp; Security → <b>Open Anyway</b><br />
+    SHA-256 <code>9496972bc458d611fb161dd4e59caa8c76dce01f096d714d24bd031e236031d7</code>
+  </div>
+</section>
+
+<footer class="wrap footer">
+  <a class="brand" href="#"><span class="mark">.D</span><b>doorman</b></a>
+  <div class="fine">
+    <a href="#routing">Routing</a>
+    <a href="#trust">Trust</a>
+    <a href="https://tiago520.github.io/switchyard-showcase/">Web console</a>
+  </div>
+</footer>
+
+</body>
+</html>
